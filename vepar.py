@@ -10,7 +10,7 @@ from matplotlib import pyplot
 import mappy as mp
 
 
-class PeakQSink:
+class PeakSink:
     ''' Accepts mappy alignment objects but only 
         stores the one with hightest query_end - query_start value.
 
@@ -22,18 +22,19 @@ class PeakQSink:
     __X_DEF = 16
     __Y_DEF = 16
 
-    def __init__(self, ref_name, alignments, x_dim=__X_DEF, y_dim=__Y_DEF):
+    def __init__(self, ref_name, get_alignments_fn, x_dim=__X_DEF, y_dim=__Y_DEF):
         ''' Constructor
 
             Args:
                 ref_name: reference name we are matching to 
-                alignments: dictonary contaning alignments
+                get_alignments_fn: functor fetching alignments for peak
                 x_dim: x-axis dimension when plotting, default: __X_DEF
                 y_dim: y-axis dimension when plotting, default: __Y_DEF
         '''
+
         self.ref_name = ref_name
 
-        self.__alignments = alignments
+        self.__get_alignments = get_alignments_fn
 
         self.__q_name = None
         self.__peak_diff = 0
@@ -56,7 +57,7 @@ class PeakQSink:
             self.__peak_diff = diff
 
     def empty(self):
-        ''' Returns True if there's a current peak value '''
+        ''' Returns True if there's a no captured peak value '''
 
         return self.__peak is None
 
@@ -82,7 +83,7 @@ class PeakQSink:
 
         peak = self.__peak
 
-        for align in self.__alignments[self.__q_name]:
+        for align in self.__get_alignments(self.__q_name):
             pyplot.plot([align.r_st, align.r_en],
                         [align.q_st, align.q_en] if align.strand > 0 else [align.q_en, align.q_st], '-')
 

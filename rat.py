@@ -9,31 +9,29 @@ from collections import namedtuple
 import mappy as mp
 
 from util import check_path, create_clean_dir
-from vepar import PeakQSink
+from vepar import PeakSink
 
 
 class _PafHolder():
     ''' List wrapper for PAF alignments '''
 
+    Query = namedtuple('Query', ['len', 'alignments'])
+
     def __init__(self, ref_name, ovlp_dir):
         self.ref_name = ref_name
         self.out_dir = create_clean_dir(ovlp_dir, ref_name)
 
-        # TODO: Tie together, named tuple 
-        self.alignments = {}
-        self.q_lens = {}
-
-        self.__peak = PeakQSink(ref_name, self.alignments)
-
+        self.queries = {}
+        self.__peak = PeakSink(
+            ref_name, lambda q_name: self.queries[q_name].alignments)
 
     def add_alignment(self, q_name, q_len, alignment):
-        if q_name not in self.alignments:
-            self.alignments[q_name] = []
-            self.q_lens[q_name] = q_len
+        if q_name not in self.queries:
+            self.queries[q_name] = _PafHolder.Query(q_len, [])
 
         # TODO: Tie in one method
         self.__peak.consume(q_name, alignment)
-        self.alignments[q_name].append(alignment)
+        self.queries[q_name].alignments.append(alignment)
 
     def dump_paf(self):
         dest_paf = os.path.join(self.out_dir, 'overlaps.paf')
@@ -43,14 +41,14 @@ class _PafHolder():
             return '{} {} {}'.format(q_name, q_len, str(align).rsplit('cg:')[0])
 
         with open(dest_paf, 'w+') as dist:
-            for q_name, lst in self.alignments.items():
-                q_len = self.q_lens[q_name]
-                for paf in map(lambda a: fmt_paf(q_name, q_len, a), lst):
+            for q_name, data in self.queries.items():
+                for paf in map(lambda a: fmt_paf(q_name, data.len, a), data.alignments):
                     dist.write(paf + '\n')
 
     def gen_plot(self):
         if not self.__peak.empty():
             self.__peak.plot(self.out_dir)
+
 
 class Rat:
     ''' Slices metegenomic accembly into contings matching references.
