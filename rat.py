@@ -15,41 +15,38 @@ from vepar import PeakQSink
 class _PafHolder():
     ''' List wrapper for PAF alignments '''
 
-    PafScored = namedtuple('PafScored', 'n_matches str')
-
     def __init__(self, ref_name, ovlp_dir):
         self.ref_name = ref_name
         self.out_dir = create_clean_dir(ovlp_dir, ref_name)
 
-        self.pafs_scored = []
+        # TODO: Tie together, named tuple 
+        self.alignments = {}
+        self.q_lens = {}
 
-        self.__sorted = False
-        self.__peak = PeakQSink(ref_name)
+        self.__peak = PeakQSink(ref_name, self.alignments)
 
-    def __sort_pafs(self, reverse=False):
-        ''' Inplae sorting of PAF based on match score '''
-        if not self.__sorted:
-            self.pafs_scored.sort(reverse=not reverse, key=operator.itemgetter(0))
-            self.__sorted = True
 
     def add_alignment(self, q_name, q_len, alignment):
-        def fmt_paf(q_name, q_len, align):
-            return '{} {} {}'.format(q_name, q_len, str(align).rsplit('cg:')[0])
+        if q_name not in self.alignments:
+            self.alignments[q_name] = []
+            self.q_lens[q_name] = q_len
 
-        paf_str = fmt_paf(q_name, q_len, alignment)
-
-        self.pafs_scored.append(_PafHolder.PafScored(alignment.mlen, paf_str))
+        # TODO: Tie in one method
         self.__peak.consume(q_name, alignment)
-        self.__sorted = False
+        self.alignments[q_name].append(alignment)
 
     def dump_paf(self):
-        self.__sort_pafs()
         dest_paf = os.path.join(self.out_dir, 'overlaps.paf')
         print('[Log]: Writing overlaps {}'.format(dest_paf), file=sys.stderr)
 
+        def fmt_paf(q_name, q_len, align):
+            return '{} {} {}'.format(q_name, q_len, str(align).rsplit('cg:')[0])
+
         with open(dest_paf, 'w+') as dist:
-            for paf_scored in self.pafs_scored:
-                dist.write(paf_scored.str + '\n')
+            for q_name, lst in self.alignments.items():
+                q_len = self.q_lens[q_name]
+                for paf in map(lambda a: fmt_paf(q_name, q_len, a), lst):
+                    dist.write(paf + '\n')
 
     def gen_plot(self):
         if not self.__peak.empty():
@@ -70,7 +67,7 @@ class Rat:
 
         parser = argparse.ArgumentParser(
             description='''Takes a metagenomic assembly and a folder containing population fasta references.
-                    Prints most promising overlaps to paf at specifed location.\n\n
+                    Prints most promising overlaps to paf at specified location.\n\n
 
                     Format: rat [options] <assembly.(fasta|fa)> <ref_dir> <out_dir>''',
             formatter_class=argparse.RawTextHelpFormatter)
