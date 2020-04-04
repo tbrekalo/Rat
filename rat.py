@@ -11,6 +11,7 @@ import mappy as mp
 from util import check_path, create_clean_dir
 
 
+
 class _PafHolder():
     ''' List wrapper for PAF alignments '''
 
@@ -20,32 +21,23 @@ class _PafHolder():
         self.ref_name = ref_name
         self.out_dir = create_clean_dir(ovlp_dir, ref_name)
 
-        self.pafs = {}
+        self.pafs_scored = []
 
-
-    def __sort_all_pafs(self, reverse=False):
+    def __sort_pafs(self, reverse=False):
         ''' Inplae sorting of PAF based on match score '''
+        self.pafs_scored.sort(reverse=not reverse, key=operator.itemgetter(0))
 
-        for pafs in self.pafs.values():
-            pafs.sort(reverse=not reverse, key=operator.itemgetter(0))
+    def add_paf(self, n_matches, paf_str):
+        self.pafs_scored.append(_PafHolder.PafScored(n_matches, paf_str))
 
+    def dump_paf(self):
+        self.__sort_pafs()
+        dest_paf = os.path.join(self.out_dir, 'overlaps.paf')
+        print('[LOG]: Writing overlaps {}'.format(dest_paf), file=sys.stderr)
 
-    def add_paf(self, q_name, n_matches, paf_str):
-        if q_name not in self.pafs:
-            self.pafs[q_name] = []
-        
-        self.pafs[q_name].append(_PafHolder.PafScored(n_matches, paf_str))
-
- 
-    def dump(self):
-        self.__sort_all_pafs()
-        for contig, pafs in self.pafs.items():
-            file_path = os.path.join(self.out_dir, contig + '.paf')
-
-            print(file_path, file=sys.stderr)
-            with open(file_path, 'w+') as dist:
-                for paf in pafs:
-                    dist.write(paf.str + '\n')
+        with open(dest_paf, 'w+') as dist:
+            for paf_scored in self.pafs_scored:
+                dist.write(paf_scored.str + '\n')
 
 
 class Rat:
@@ -58,16 +50,12 @@ class Rat:
     __BEST_N = 10
 
     @staticmethod
-    def __gen_paf():
-        pass
-
-    @staticmethod
     def __init_parser():
         ''' Initializes command line argument parser '''
 
         parser = argparse.ArgumentParser(
             description='''Takes a metagenomic assembly and a folder containing population fasta references.
-                    Prints most promising overlaps to stdout.\n\n
+                    Prints most promising overlaps to paf at specifed location.\n\n
 
                     Format: rat [options] <assembly.(fasta|fa)> <ref_dir> <out_dir>''',
             formatter_class=argparse.RawTextHelpFormatter)
@@ -141,14 +129,6 @@ class Rat:
 
         return asm
 
-    def __init_dirs(self):
-        ''' Creates directories for PAF output and graphics '''
-
-        ovlp_dir = create_clean_dir(self.__out_dir, 'rat_overlaps', True)
-        plot_dir = create_clean_dir(self.__out_dir, 'rat_plots', True)
-
-        return ovlp_dir, plot_dir
-
     def __init__(self, args=None):
         ''' Initializes Rat and parses arguments
 
@@ -166,15 +146,11 @@ class Rat:
         # Asm to ref mapping
         self.__preset = 'asm20'
 
-        ovlp_dir, plot_dir = self.__init_dirs()
-
-        self.__ovlp_dir = ovlp_dir
-        self.__plot_dir = plot_dir
+        self.__ovlp_dir = create_clean_dir(
+            self.__out_dir, 'rat_overlaps', True)
 
     def __map_to(self, ref_name, ref_path):
         ''' Maps assembly to reference sequence.
-
-            Dumps PAFs into specified folder via cmd arguments
 
             Args:
                 ref_name: reference genome name
@@ -193,7 +169,7 @@ class Rat:
         for q_name, q_str in self.__asm.items():
             for hit in aligner.map(q_str):
                 paf_str = fmt_paf(q_name, len(q_str), hit)
-                pafs.add_paf(q_name, hit.mlen, paf_str)
+                pafs.add_paf(hit.mlen, paf_str)
 
         return pafs
 
@@ -209,4 +185,4 @@ class Rat:
                     ref_name), file=sys.stderr)
 
             pafs = self.__map_to(ref_name, ref_path)
-            pafs.dump()
+            pafs.dump_paf()
