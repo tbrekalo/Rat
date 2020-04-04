@@ -9,7 +9,7 @@ from collections import namedtuple
 import mappy as mp
 
 from util import check_path, create_clean_dir
-
+from vepar import PeakQSink
 
 
 class _PafHolder():
@@ -23,22 +23,37 @@ class _PafHolder():
 
         self.pafs_scored = []
 
+        self.__sorted = False
+        self.__peak = PeakQSink(ref_name)
+
     def __sort_pafs(self, reverse=False):
         ''' Inplae sorting of PAF based on match score '''
-        self.pafs_scored.sort(reverse=not reverse, key=operator.itemgetter(0))
+        if not self.__sorted:
+            self.pafs_scored.sort(reverse=not reverse, key=operator.itemgetter(0))
+            self.__sorted = True
 
-    def add_paf(self, n_matches, paf_str):
-        self.pafs_scored.append(_PafHolder.PafScored(n_matches, paf_str))
+    def add_alignment(self, q_name, q_len, alignment):
+        def fmt_paf(q_name, q_len, align):
+            return '{} {} {}'.format(q_name, q_len, str(align).rsplit('cg:')[0])
+
+        paf_str = fmt_paf(q_name, q_len, alignment)
+
+        self.pafs_scored.append(_PafHolder.PafScored(alignment.mlen, paf_str))
+        self.__peak.consume(q_name, alignment)
+        self.__sorted = False
 
     def dump_paf(self):
         self.__sort_pafs()
         dest_paf = os.path.join(self.out_dir, 'overlaps.paf')
-        print('[LOG]: Writing overlaps {}'.format(dest_paf), file=sys.stderr)
+        print('[Log]: Writing overlaps {}'.format(dest_paf), file=sys.stderr)
 
         with open(dest_paf, 'w+') as dist:
             for paf_scored in self.pafs_scored:
                 dist.write(paf_scored.str + '\n')
 
+    def gen_plot(self):
+        if not self.__peak.empty():
+            self.__peak.plot(self.out_dir)
 
 class Rat:
     ''' Slices metegenomic accembly into contings matching references.
@@ -160,16 +175,12 @@ class Rat:
                 pafs: _PafHolder with all conting matches
         '''
 
-        def fmt_paf(q_name, q_len, align):
-            return '{} {} {}'.format(q_name, q_len, str(align).rsplit('cg:')[0])
-
         aligner = self.__create_aligner(ref_path)
         pafs = _PafHolder(ref_name, self.__ovlp_dir)
 
         for q_name, q_str in self.__asm.items():
             for hit in aligner.map(q_str):
-                paf_str = fmt_paf(q_name, len(q_str), hit)
-                pafs.add_paf(hit.mlen, paf_str)
+                pafs.add_alignment(q_name, len(q_str), hit)
 
         return pafs
 
@@ -185,4 +196,6 @@ class Rat:
                     ref_name), file=sys.stderr)
 
             pafs = self.__map_to(ref_name, ref_path)
+
             pafs.dump_paf()
+            pafs.gen_plot()
