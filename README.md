@@ -26,8 +26,9 @@ optional arguments:
   -t N_THREADS          Number of threads used by minimap. Default=3
 ```
 
-## Result directory example
+## Result examples
 
+### Directory structure
 ```
 rat_overlaps
 ├── Bacillus_subtilis_complete_genome
@@ -65,6 +66,8 @@ rat_overlaps
 
 ```
 
+### Plot:
+  ![](misc/eg_plot.png)
 *** 
 
 Under development
